@@ -10,7 +10,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, mkdirSync, openSync, closeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { connect } from "node:net";
@@ -329,7 +329,17 @@ test("P2B-E02 [E-level]: Runtime-control escape probe: container sockets and dae
       } catch {
         return false;
       }
-    });
+    }) || (process.platform === "win32" && ["//./pipe/docker_engine", "//./pipe/containerd-containerd"].some((p) => {
+      // RR-15: existsSync cannot see named pipes — attempt a read-only open.
+      // CI evidence (run 38519250546): runner Docker state varies run to run.
+      try {
+        const fd = openSync(p, "r");
+        closeSync(fd);
+        return true;
+      } catch {
+        return false;
+      }
+    }));
     await t.test("physical child-visibility probe (socket-free hosts)", {
       skip: hostExposesSockets
         ? "host exposes container control sockets; child-visibility probe requires a socket-free host"
