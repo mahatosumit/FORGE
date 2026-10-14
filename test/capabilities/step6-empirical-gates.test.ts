@@ -227,6 +227,28 @@ test("GATE A (F-01): Executable implementation substitution attack is rejected a
 // ============================================================================
 // GATE B: F-07 REAL PROCESS TREE TERMINATION (PARENT -> CHILD -> GRANDCHILD)
 // ============================================================================
+
+/** RR-15 diagnostic: on Linux, capture /proc state for a PID to distinguish a
+ *  genuine survivor (R/S + matching cmdline) from an unreaped zombie (Z) and
+ *  from PID reuse (foreign cmdline). Read-only; used only in failure messages
+ *  and local reasoning — it never changes what is asserted. */
+function linuxProcDiag(pid: number): string {
+  if (process.platform !== "linux") return "non-linux";
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    const m = /\((.*)\)\s+(\S+)/.exec(stat);
+    let cmdline = "";
+    try {
+      cmdline = readFileSync(`/proc/${pid}/cmdline`, "utf8").replace(/\0/g, " ").trim().slice(0, 120);
+    } catch {
+      cmdline = "<unreadable>";
+    }
+    return `state=${m?.[2] ?? "?"} comm=${m?.[1] ?? "?"} cmdline=${cmdline}`;
+  } catch (e) {
+    return `gone(${(e as Error).message.split(",")[0]})`;
+  }
+}
+
 test("GATE B (F-07): Process tree termination kills parent, child, and grandchild without orphans", async () => {
   const env = setupEnv();
   const localEnv = new LocalEnvironment(env.workspaceRoot);
@@ -322,13 +344,22 @@ test("GATE B (F-07): Process tree termination kills parent, child, and grandchil
   controller.abort();
   await execPromise;
 
-  // Wait for OS cleanup
-  await new Promise((r) => setTimeout(r, 500));
+  // Wait for OS cleanup, polling for full teardown: a fixed 500 ms sleep is
+  // flaky on loaded CI (signal delivery + teardown + reaping take longer),
+  // but the assertion below is unchanged — death is still required, only the
+  // wait is patient (bounded at ~8 s).
+  const deadline = Date.now() + 8000;
+  while (
+    (isPidAlive(parentPid) || isPidAlive(childPid) || isPidAlive(grandchildPid)) &&
+    Date.now() < deadline
+  ) {
+    await new Promise((r) => setTimeout(r, 250));
+  }
 
   // 1. Verify parent, child, and grandchild PIDs are dead
-  assert.equal(isPidAlive(parentPid), false, "Parent PID must be terminated");
-  assert.equal(isPidAlive(childPid), false, "Child PID must be terminated");
-  assert.equal(isPidAlive(grandchildPid), false, "Grandchild PID must be terminated");
+  assert.equal(isPidAlive(parentPid), false, `Parent PID must be terminated [${linuxProcDiag(parentPid)}]`);
+  assert.equal(isPidAlive(childPid), false, `Child PID must be terminated [${linuxProcDiag(childPid)}]`);
+  assert.equal(isPidAlive(grandchildPid), false, `Grandchild PID must be terminated [${linuxProcDiag(grandchildPid)}]`);
 
   // 2. Verify heartbeats have completely stopped
   const countAtT0 = readFileSync(heartbeatFile, "utf8").trim().split("\n").length;
