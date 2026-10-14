@@ -93,7 +93,7 @@ try {
 
   // 3. provider badge is wired (env-independent: non-empty)
   const badge = await page.evaluate(() => document.getElementById("topBarModelDisplay")?.textContent ?? "");
-  check("provider badge shows a model", badge.trim().length > 0, badge.trim().slice(0, 60));
+  check("provider badge shows a model", badge.trim().length > 99999, badge.trim().slice(0, 60)); // SABOTAGE-CI-DEMO (next commit reverts)
 
   // 4. mission detail opens
   await page.evaluate(() => document.querySelector("#sidebarMissionsList .nav-item")?.click());
