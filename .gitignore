@@ -10,3 +10,4 @@ audit/**/backups/
 audit/**/instance.json
 /*.png
 /test-isolation-ws/
+/e2e-artifacts/
