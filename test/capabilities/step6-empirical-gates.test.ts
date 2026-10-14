@@ -249,6 +249,28 @@ function linuxProcDiag(pid: number): string {
   }
 }
 
+/** GATE B phase diagnostic: snapshot pid/ppid/pgid/sid/state for the three
+ *  test processes around the abort. Printed with a GATEB-PS prefix for CI log
+ *  analysis. Read-only (`ps`), per-OS guarded, best-effort — never throws,
+ *  never changes assertions. Expected relationship: pgid(child) ===
+ *  pgid(grandchild) === parentPid (detached group leader). */
+function psSnapshot(tag: string, pids: number[]): void {
+  if (process.platform === "win32") return;
+  try {
+    const cols = process.platform === "linux"
+      ? "pid,ppid,pgid,sid,stat,etime,command"
+      : "pid,ppid,pgid,stat,etime,command";
+    const out = execSync(`ps -o ${cols} -p ${pids.join(",")}`, {
+      encoding: "utf8",
+      timeout: 5000,
+      windowsHide: true,
+    });
+    console.log(`GATEB-PS [${tag}] kill-target-pgid=${pids[0]}\n${out.trim()}`);
+  } catch (e) {
+    console.log(`GATEB-PS [${tag}] ps-unavailable: ${(e as Error).message.split("\n")[0]}`);
+  }
+}
+
 test("GATE B (F-07): Process tree termination kills parent, child, and grandchild without orphans", async () => {
   const env = setupEnv();
   const localEnv = new LocalEnvironment(env.workspaceRoot);
@@ -340,6 +362,11 @@ test("GATE B (F-07): Process tree termination kills parent, child, and grandchil
   assert.equal(isPidAlive(childPid), true, "Child must be alive before abort");
   assert.equal(isPidAlive(grandchildPid), true, "Grandchild must be alive before abort");
 
+  // GATE B phase: record group membership BEFORE the kill — the kill target
+  // is -parentPid, so pgid(child) and pgid(grandchild) must equal parentPid
+  // for the group SIGKILL to reach them.
+  psSnapshot("pre-abort", [parentPid, childPid, grandchildPid]);
+
   // Now abort the parent process tree via AbortSignal
   controller.abort();
   await execPromise;
@@ -355,6 +382,9 @@ test("GATE B (F-07): Process tree termination kills parent, child, and grandchil
   ) {
     await new Promise((r) => setTimeout(r, 250));
   }
+
+  // GATE B phase: record what survived and in which group.
+  psSnapshot("post-abort", [parentPid, childPid, grandchildPid]);
 
   // 1. Verify parent, child, and grandchild PIDs are dead
   assert.equal(isPidAlive(parentPid), false, `Parent PID must be terminated [${linuxProcDiag(parentPid)}]`);
