@@ -2,6 +2,7 @@
 // Effect seam confinement: all node:child_process usage is restricted to src/environments/**.
 
 import { execFile, spawn } from "node:child_process";
+import { killTreePosix } from "../local.js";
 
 export interface IsolatedCommandResult {
   exitCode: number;
@@ -82,13 +83,9 @@ export class ProcessTreeDriver {
           execFile("taskkill", ["/PID", String(hostPid), "/T", "/F"], { timeout: 3000 }, () => resolve());
         });
       } else {
-        try {
-          process.kill(-hostPid, "SIGKILL");
-        } catch {
-          try {
-            process.kill(hostPid, "SIGKILL");
-          } catch {}
-        }
+        // GATE B fix: same whole-tree strategy as the exec abort path —
+        // group leadership is not assumed; descendants are killed explicitly.
+        killTreePosix(hostPid);
       }
     }
 

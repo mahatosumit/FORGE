@@ -28,6 +28,76 @@ export function assertInsideWorkspace(root: string, absolute: string): string {
 }
 
 /**
+ * POSIX whole-tree termination (GATE B fix). SIGKILLs every descendant of
+ * rootPid leaves-up, then sweeps the process group and the root itself.
+ * Best-effort and total (never throws): every step is individually guarded
+ * and the `ps` snapshot has a bounded timeout with a root-only fallback.
+ *
+ * Rationale (CI-demonstrated): process-group leadership cannot be assumed.
+ * An exec'd child was observed sharing its launcher's group (pgid != pid),
+ * so a group-only kill targets an empty group while the fallback kills only
+ * the direct child — orphaning the subtree, which survives indefinitely.
+ * Enumerating the tree works with or without group leadership, mirroring
+ * the Windows `taskkill /T` strategy. Known residual: snapshot-then-kill
+ * races (a PID recycled mid-sweep) — same class as any pid-based kill.
+ */
+export function killTreePosix(rootPid: number): void {
+  try {
+    let descendants: number[] = [];
+    try {
+      const out = execSync("ps -eo pid,ppid", { encoding: "utf8", timeout: 5000, windowsHide: true }) as string;
+      const childrenOf = new Map<number, number[]>();
+      for (const line of out.split("\n").slice(1)) {
+        const m = line.trim().match(/^(\d+)\s+(\d+)/);
+        if (!m) continue;
+        const pid = Number(m[1]);
+        const ppid = Number(m[2]);
+        if (!Number.isSafeInteger(pid) || !Number.isSafeInteger(ppid)) continue;
+        const list = childrenOf.get(ppid);
+        if (list) list.push(pid);
+        else childrenOf.set(ppid, [pid]);
+      }
+      // BFS from the root discovers parents before children.
+      const seen = new Set<number>([rootPid]);
+      const queue: number[] = [rootPid];
+      while (queue.length > 0) {
+        const cur = queue.shift()!;
+        for (const c of childrenOf.get(cur) ?? []) {
+          if (!seen.has(c)) {
+            seen.add(c);
+            queue.push(c);
+          }
+        }
+      }
+      seen.delete(rootPid);
+      descendants = [...seen];
+    } catch {
+      descendants = [];
+    }
+    // Reversed BFS order kills deeper processes before their parents.
+    for (let i = descendants.length - 1; i >= 0; i--) {
+      try {
+        process.kill(descendants[i]!, "SIGKILL");
+      } catch {
+        /* already dead or reaped */
+      }
+    }
+    try {
+      process.kill(-rootPid, "SIGKILL");
+    } catch {
+      /* no such group — expected when leadership never took effect */
+    }
+    try {
+      process.kill(rootPid, "SIGKILL");
+    } catch {
+      /* already dead */
+    }
+  } catch {
+    /* total function: never throws */
+  }
+}
+
+/**
  * Windows: npm/git/etc. are .cmd/.bat shims that execFile cannot spawn
  * directly. Resolve argv[0] against PATH; if it is a .cmd/.bat shim, route
  * through cmd.exe /d /s /c with each argument quoted (inner quotes doubled).
@@ -213,8 +283,10 @@ export class LocalEnvironment implements Environment {
               try { child.kill("SIGKILL"); } catch {}
             }
           } else {
+            // GATE B fix: never assume group leadership — enumerate and kill
+            // the whole tree (group sweep + root sweep included). Total.
             try {
-              process.kill(-pid, "SIGKILL");
+              killTreePosix(pid);
             } catch {
               try { child.kill("SIGKILL"); } catch {}
             }
