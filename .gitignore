@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.forge/
+.env
+*.log
+.mimosa/
+.tempmediaStorage/
+# init hygiene: never commit bearer tokens, evidence duplicates, or test debris
+audit/**/backups/
+audit/**/instance.json
+/*.png
+/test-isolation-ws/

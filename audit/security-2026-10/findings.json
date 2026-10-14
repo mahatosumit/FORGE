@@ -1,0 +1,120 @@
+{
+  "audit": "forge-security-2026-10",
+  "window": "2026-10-13/14",
+  "build": {
+    "typecheck": "pass",
+    "lint": "pass",
+    "build": "pass",
+    "tests": { "total": 453, "pass": 453, "fail": 0, "newSecurityRegressions": 11 }
+  },
+  "findings": [
+    {
+      "id": "F-03",
+      "title": "Directory junction/symlink traversal escapes workspace confinement in local effect seams",
+      "severity": "High",
+      "confidence": "High (reproduced)",
+      "component": "src/environments/local.ts absolute()/resolveReal() (pre-fix), used by fs read/write, search reads, exec cwd, mkdir/stat",
+      "preconditions": "Attacker-controlled repository or workspace contains a directory symlink/junction (e.g. created on Linux/macOS or by tooling) pointing outside; model proposes an in-workspace-looking path under it",
+      "reproduction": "audit/security-2026-10/tools/repro-junction-escape.mts — gate returned allow, putFile wrote OUTSIDE the workspace; readFile/exec-cwd escaped likewise",
+      "expected": "All effect seams fail closed with PathEscapeError; nothing lands outside the canonical workspace root",
+      "actual_pre_fix": "Lexical resolve() allowed the path; effects followed the junction and escaped",
+      "impact": "Complete defeat of the workspace boundary for reads, writes and command working directories",
+      "root_cause": "Confinement compared lexical paths; ancestors were not canonicalized",
+      "remediation": "absolute() now realpaths the deepest existing ancestor, compares against the canonical real root, and rejects Windows aliases (ADS, trailing dot/space, drive-relative)",
+      "regression_tests": ["test/security/audit-2026-10-regressions.test.ts F-03 (junction)", "F-03 (aliases)"],
+      "status": "fixed-verified"
+    },
+    {
+      "id": "F-01",
+      "title": "No Host/Origin validation — DNS-rebinding can read console token and drive API",
+      "severity": "Medium-High",
+      "confidence": "High (live probe)",
+      "component": "src/api/server.ts handle()",
+      "preconditions": "Operator visits a malicious page while the server runs; page rebinds its hostname to 127.0.0.1",
+      "reproduction": "curl -H 'Host: evil.example.com' http://127.0.0.1:3131/ → 200 (pre-fix); token is embedded in that HTML",
+      "expected": "Requests with non-loopback Host or foreign Origin are rejected",
+      "actual_pre_fix": "Accepted; token-bearing console served to any Host; no Origin checks at all",
+      "impact": "Token theft + full API control via the operator's browser",
+      "root_cause": "HTTP trust boundary relied on loopback binding alone",
+      "remediation": "Host allowlist and Origin allowlist enforced before routing; verified 403 on spoofs, 200 on loopback",
+      "regression_tests": ["F-01 spoofed Host", "F-01 foreign Origin", "F-01 auth fail-closed"],
+      "status": "fixed-verified"
+    },
+    {
+      "id": "F-07",
+      "title": "Ledger open-guard falsely reports 'journal corruption' on any continued mission; blocks resume",
+      "severity": "High (reliability/integrity-reporting)",
+      "confidence": "High (reproduced end-to-end)",
+      "component": "src/ledger/ledger.ts open-time closure-anchor check",
+      "preconditions": "Mission received a directive after mission.closed (first-class continuation) — routine in web console use",
+      "reproduction": "POST /missions/:id/directive on closed mission (200) → POST /missions/:id/resume → 500 'journal corruption at seq N: prev-hash-mismatch' while verifyChain()=OK (verify-closed-mission-journal.mts proves the chain is intact)",
+      "expected": "Continuation is legitimate; reopen/resume works; genuine tampering still fails closed",
+      "actual_pre_fix": "Guard demanded closure be the last record, contradicting the product's own continuation records",
+      "impact": "False tamper alarms, resume impossible, trust erosion in the integrity layer",
+      "root_cause": "Conflated 'records after closure' (continuation) with 'closure altered' (tampering)",
+      "remediation": "Guard now checks only that the closure receipt's chainTip binds to the closure record's prevHash; forged/invalid post-closure records still fail via verifyChain (test)",
+      "regression_tests": ["F-07 continuation opens cleanly + forged record fails"],
+      "status": "fixed-verified"
+    },
+    {
+      "id": "F-02",
+      "title": "Console served without security headers (no CSP / frame denial / nosniff)",
+      "severity": "Medium",
+      "confidence": "High (live probe)",
+      "component": "src/api/server.ts HTML + JSON responses",
+      "reproduction": "curl -D - / → no CSP, no X-Frame-Options, no nosniff",
+      "impact": "Approval actions clickjackable; no containment if any XSS is ever introduced; sniffing ambiguity",
+      "root_cause": "Headers never added",
+      "remediation": "CSP (self + inline, frame-ancestors 'none', base-uri 'none'), X-Frame-Options DENY, nosniff, no-store added; UI verified for zero CSP violations under real Edge",
+      "regression_tests": ["F-02 headers on console + API"],
+      "status": "fixed-verified"
+    },
+    {
+      "id": "F-08",
+      "title": "Latent DOM-XSS sinks (raw error strings into innerHTML; unescaped missionId in inline handlers; unvalidated deep-link id)",
+      "severity": "Low (latent — not currently reachable with attacker characters)",
+      "confidence": "High for sink presence; Medium on exploitability (server error bodies probed: fixed strings, no echo)",
+      "component": "src/api/webui.ts",
+      "remediation": "escapeHtml on error paths; data-attribute + getAttribute pattern for receipt buttons; ULID validation for ?missionId deep-links",
+      "regression": "covered by UI e2e + escaping now enforced at each sink",
+      "status": "fixed-verified"
+    },
+    {
+      "id": "F-04",
+      "title": "Attached interpreter-eval flag forms bypass R4 detection",
+      "severity": "Low",
+      "confidence": "High (unit)",
+      "component": "src/gate/gate.ts isInterpreterCodeEval",
+      "reproduction": "grant argv-prefix [\"node\"] + proposal [\"node\",\"-eprintln(1)\"] was allowed without escalation",
+      "remediation": "Attached short-flag and --flag=value forms now detected; bare prefix still matches plain `npm test` (regression-tested)",
+      "status": "fixed-verified"
+    },
+    {
+      "id": "F-06",
+      "title": "IPv6 host-pattern cross-matching",
+      "severity": "Low",
+      "confidence": "High (unit)",
+      "component": "src/gate/gate.ts + src/multi-agent/effective-authority.ts hostMatches",
+      "reproduction": "grant hosts [\"[::1]\"] matched any bracketed IPv6 host (split(':')[0] === '[')",
+      "remediation": "Bracket-aware host extraction in both copies",
+      "status": "fixed-verified"
+    },
+    {
+      "id": "F-05",
+      "title": "Windows canonicalization aliases accepted by confinement",
+      "severity": "Low",
+      "confidence": "High (probe)",
+      "component": "src/environments/local.ts",
+      "reproduction": "'weird.'/'weird ' aliased onto 'weird'; 'C:evil.txt' resolved to ws\\evil.txt; ADS rejected late at rename (EINVAL) with direct-write fallback path untested for ADS targets",
+      "remediation": "All alias classes rejected up-front (folded into F-03 fix)",
+      "status": "fixed-verified"
+    }
+  ],
+  "not_findings": [
+    "Trailing space in Authorization header accepted (HTTP OWS trimming — normalization, not a bypass)",
+    "Crafted mission ids in URLs (404 bodies never echo attacker strings)",
+    "Hostile onerror goal stored and rendered (escaped; playwright: no dialog, no injected elements)",
+    "npm audit (prod + full): 0 vulnerabilities",
+    "Package tarball: no .env values, no .forge state, no audit artifacts"
+  ]
+}

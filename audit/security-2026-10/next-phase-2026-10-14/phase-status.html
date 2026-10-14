@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FORGE — Security Hardening Phase Status (2026-10-14)</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --border:#2d333b;
+    --text:#e6edf3; --muted:#9aa4b2; --accent:#58a6ff; --green:#3fb950;
+    --amber:#d29922; --red:#f85149; --mono:ui-monospace,SFMono-Regular,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:980px;margin:0 auto;padding:32px 20px 64px}
+  header{border:1px solid var(--border);background:linear-gradient(180deg,var(--panel2),var(--panel));border-radius:12px;padding:24px 26px;margin-bottom:20px}
+  header h1{margin:0 0 6px;font-size:24px}
+  header p{margin:4px 0;color:var(--muted)}
+  .badges{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .badge{font:12px/1 var(--mono);padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:#0b0f14}
+  .badge.green{color:var(--green);border-color:#2ea04355}
+  .badge.amber{color:var(--amber);border-color:#d2992255}
+  section{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:20px 22px;margin:14px 0}
+  h2{margin:0 0 10px;font-size:17px;color:var(--accent)}
+  h3{margin:16px 0 6px;font-size:14px}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:8px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+  th{color:var(--muted);font-weight:600;background:#0b0f14}
+  code{font-family:var(--mono);font-size:12.5px;background:#0b0f14;border:1px solid var(--border);border-radius:6px;padding:1px 6px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:760px){.grid{grid-template-columns:1fr}}
+  .card{background:#0b0f14;border:1px solid var(--border);border-radius:10px;padding:14px 16px;min-width:0}
+  .card h3{margin:0 0 6px}
+  .pass{color:var(--green);font-weight:700}
+  .warn{color:var(--amber);font-weight:700}
+  a{color:var(--accent)}
+  ul{margin:8px 0;padding-left:20px}
+  li{margin:4px 0}
+  footer{color:var(--muted);font-size:12.5px;margin-top:18px}
+  .files{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .files a{font-family:var(--mono);font-size:12px;border:1px solid var(--border);border-radius:8px;padding:6px 10px;text-decoration:none;background:#0b0f14}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>FORGE — Security-Hardening Phase Status</h1>
+  <p>Phase: <strong>Session lifecycle (RR-06) + Pack admission (RR-02)</strong> &nbsp;·&nbsp; Date: 2026-10-14 &nbsp;·&nbsp; lavish-axi CLI <code>0.1.87</code> verified</p>
+  <div class="badges">
+    <span class="badge green">463/463 tests pass</span>
+    <span class="badge green">typecheck exit 0</span>
+    <span class="badge green">lint PASS</span>
+    <span class="badge green">build exit 0</span>
+    <span class="badge green">npm audit 0 vulns</span>
+    <span class="badge amber">RR-06 substantially closed</span>
+    <span class="badge amber">RR-02 defects closed</span>
+  </div>
+  <div class="files">
+    <a href="./next-phase-assessment.md">next-phase-assessment.md</a>
+    <a href="./risk-priority-matrix.md">risk-priority-matrix.md</a>
+    <a href="./implementation-report.md">implementation-report.md</a>
+    <a href="./verification-report.md">verification-report.md</a>
+    <a href="./residual-risk-update.md">residual-risk-update.md</a>
+  </div>
+</header>
+
+<section id="scope">
+  <h2>1 · Scope</h2>
+  <p>Baseline re-verified against the audit report with no material discrepancy (453/453 suite, typecheck/lint/build green, prod audit 0 vulns, all F-01…F-08 fixes present). From the ranked matrix, the phase took the two P0 items:</p>
+  <ul>
+    <li><strong>RR-06 — session/auth lifecycle:</strong> stale token-bearing <code>session.json</code> outliving its server; CLI falling back to raw dead-port calls; timing-variable bearer compare.</li>
+    <li><strong>RR-02 — extension (pack) admission/runtime:</strong> sidecar env inheritance, missing spawn <code>error</code> handler, unvalidated <code>registry.json</code>, prototype-key ids.</li>
+  </ul>
+  <p>Everything else (RR-12 POSIX evidence, RR-04 docs, RR-08 browser CI, RR-09 supply chain, RR-05 soak, RR-10 real-model cert, RR-01/03/07/11/13/14 design fences) stayed on the matrix for the next phase. Full rationale: <a href="./next-phase-assessment.md">next-phase-assessment.md</a>, <a href="./risk-priority-matrix.md">risk-priority-matrix.md</a>.</p>
+</section>
+
+<section id="changes">
+  <h2>2 · Changes</h2>
+  <div class="grid">
+    <div class="card">
+      <h3>RR-06 — Session lifecycle <span class="pass">✓</span></h3>
+      <ul>
+        <li><code>src/api/server.ts</code>: private <code>safeEqual()</code> (length check + <code>crypto.timingSafeEqual</code>) on header <em>and</em> <code>/events</code> query path. Same accept/reject outcomes.</li>
+        <li><code>src/cli/cli.ts</code>: new <code>parseSessionFile()</code> shape validation (port 1–65535, 48-hex token, optional pid); <code>clearSessionFile()</code> idempotent removal; <code>getLiveSession()</code> probes <code>/health</code> (1.2&nbsp;s) and clears dead files so commands fall back to local paths.</li>
+        <li><code>run</code> clears the file on both exit paths; <code>serve</code> clears on <code>SIGINT/SIGTERM</code> and closes the listener.</li>
+        <li>6 new tests: <code>test/security/session-lifecycle.test.ts</code>.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>RR-02 — Pack admission <span class="pass">✓</span></h3>
+      <ul>
+        <li><code>src/packs/packs.ts</code>: corrupt/invalid registry and manifest failures now typed <code>PackError</code> with remediation (fail-closed before dispatch).</li>
+        <li>Own-key registry (<code>Object.create(null)</code> + <code>Object.hasOwn</code>); <code>__proto__</code> schema-rejected; <code>constructor</code>/<code>toString</code> can never resolve via prototype.</li>
+        <li>Sidecar spawn: minimal env allowlist (<code>PATH, SYSTEMROOT, COMSPEC, PATHEXT, TMP, TEMP</code>), <code>cwd</code> = pack dir, <code>error</code> handler → <code>PackError</code>, stdin EPIPE guard, bounded child reaping.</li>
+        <li>4 adversarial tests: <code>test/packs/packs-admission.test.ts</code> — RED 4/4 before, GREEN 4/4 after; no untrusted code executed.</li>
+      </ul>
+    </div>
+  </div>
+  <p>Deliberately untouched: directive-after-close continuation (F-07), pack quarantine policy, gate/authority logic, console headers, path confinement. Detail: <a href="./implementation-report.md">implementation-report.md</a>.</p>
+</section>
+
+<section id="verification">
+  <h2>3 · Verification</h2>
+  <table>
+    <tr><th>#</th><th>Command</th><th>Result</th></tr>
+    <tr><td>1</td><td><code>npm run typecheck</code></td><td class="pass">exit 0</td></tr>
+    <tr><td>2</td><td><code>npm run lint</code></td><td class="pass">PASS (effect seams confined)</td></tr>
+    <tr><td>3</td><td><code>npm run build</code></td><td class="pass">exit 0</td></tr>
+    <tr><td>4</td><td><code>node --import tsx --test "test/**/*.test.ts"</code></td><td class="pass">463/463 pass, 0 fail</td></tr>
+    <tr><td>5</td><td><code>packs-admission</code> before fix</td><td>RED 4/4 (expected: env leak, raw ENOENT, raw SyntaxError, ZodError)</td></tr>
+    <tr><td>6</td><td><code>packs-admission</code> + pre-existing packs after fix</td><td class="pass">GREEN 8/8</td></tr>
+    <tr><td>7</td><td><code>session-lifecycle</code></td><td class="pass">6/6 pass</td></tr>
+    <tr><td>8</td><td><code>npm audit --omit=dev</code></td><td class="pass">0 vulnerabilities</td></tr>
+  </table>
+  <p>Invariants held: no edits to <code>src/gate/</code>, ledger, or router retry; <code>enable()</code> hash-pinning contract unchanged; auth outcomes behavior-preserving. Limitations: <code>serve</code> signal cleanup not auto-tested (platform-sensitive); pack runtime still not wired into boot; no real-model calls. Full log: <a href="./verification-report.md">verification-report.md</a>.</p>
+</section>
+
+<section id="risks">
+  <h2>4 · Remaining risks</h2>
+  <table>
+    <tr><th>RR</th><th>Status</th><th>Note / next step</th></tr>
+    <tr><td>RR-06 residual</td><td><span class="warn">Small</span></td><td>Manual check of <code>serve</code> signal cleanup at next interactive use; optional follow-up test.</td></tr>
+    <tr><td>RR-02 residual</td><td><span class="warn">Structural</span></td><td>Wire packs into boot behind boundary flag; engine-level admission suite; document observation-body schema coupling for pack authors.</td></tr>
+    <tr><td>RR-12</td><td>Unchanged</td><td>POSIX symlink live test (Windows junction already verified; logic shared).</td></tr>
+    <tr><td>RR-04</td><td>Unchanged</td><td>Continuation-lifetime doc (behavior pinned by F-07).</td></tr>
+    <tr><td>RR-08</td><td>Unchanged</td><td>Deterministic browser lane in CI (playwright MCP now available).</td></tr>
+    <tr><td>RR-09</td><td>Unchanged</td><td>CI SHA pinning + least-privilege permissions.</td></tr>
+    <tr><td>RR-05</td><td>Unchanged</td><td>Long-run soak test for outputs/journal growth.</td></tr>
+    <tr><td>RR-10</td><td>Gated</td><td>Real-model cert when spend authorized.</td></tr>
+    <tr><td>RR-01/03/07/11/13/14</td><td>Accepted fences</td><td>Revisit on stated triggers only.</td></tr>
+  </table>
+  <p>Suggested next-phase order: (1) RR-09 + RR-08 browser lane → (2) RR-04 docs + RR-12 POSIX test + serve signal test → (3) pack boot wiring → (4) RR-05 soak → (5) RR-10 cert. Source: <a href="./residual-risk-update.md">residual-risk-update.md</a>.</p>
+</section>
+
+<footer>
+  Review-only artifact; no source, test, or config files modified. Phase reports sit alongside this file and are linked relatively above. Generated 2026-10-14 from the five phase .md files; verification numbers transcribed from <a href="./verification-report.md">verification-report.md</a> (463/463).
+</footer>
+
+</div>
+</body>
+</html>

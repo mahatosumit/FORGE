@@ -1,0 +1,18 @@
+FORGE
+
+Architectural patterns in FORGE were designed by studying three MIT-licensed
+open-source projects. Their ideas (not their code) shaped this implementation:
+
+- Hermes Agent (Nous Research) - declarative provider profiles, phase-verdict
+  loop structure, backend-agnostic execution environments, incident-driven
+  eval culture.
+- OpenCode - event-sourced state, client/server separation, inbox delivery
+  semantics, structured compaction checkpoints, typed error taxonomy,
+  decline-as-control-plane-signal.
+- QUACK Contributors - capability-scoped grants with attenuation,
+  model-proposes/runtime-executes governance, evidence->verification->receipt
+  discipline, quarantine-first extension ingestion, secrets allowlisting.
+
+All three are MIT-licensed. This project re-derived their concepts into an
+original architecture (see architecture/ directory); no substantial code was
+copied.

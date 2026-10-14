@@ -1,0 +1,29 @@
+{
+  "name": "forge",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "bin": { "forge": "dist/cli/cli.js" },
+  "files": ["dist", "docs", "examples", "LICENSE", "NOTICE", "README.md", "SECURITY.md", ".env.example"],
+  "description": "FORGE — governed autonomy runtime: the model proposes, the runtime owns what happened and what may happen. CLI + web console + REST/SSE API over a hash-chained mission journal.",
+  "engines": {
+    "node": ">=22.5"
+  },
+  "scripts": {
+    "start": "node --import tsx src/cli/cli.ts serve",
+    "serve": "node --import tsx src/cli/cli.ts serve",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:tests": "tsc -p tsconfig.test.json --noEmit",
+    "test": "node --import tsx --test \"test/**/*.test.ts\"",    "lint": "node scripts/lint.mjs",
+    "cli": "node --import tsx src/cli/cli.ts"
+  },
+  "dependencies": {
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

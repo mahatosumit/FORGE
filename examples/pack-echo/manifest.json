@@ -1,0 +1,21 @@
+{
+  "id": "echo",
+  "version": "1.0.0",
+  "purpose": "echoes a greeting (example pack)",
+  "environments": [
+    "local"
+  ],
+  "proposalKind": "artifact",
+  "constraintsVocab": [
+    "paths"
+  ],
+  "concurrency": "parallel",
+  "idempotent": true,
+  "riskClass": [
+    "read"
+  ],
+  "provenance": {
+    "pack": "pack-echo",
+    "hash": "0000000000000000000000000000000000000000000000000000000000000000"
+  }
+}
