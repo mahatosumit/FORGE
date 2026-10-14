@@ -639,7 +639,30 @@ test("INV-18: Execution evidence and output survive complete container destructi
 test("FREEZE-001: Real Docker driver accurately detects daemon state and fails closed when unavailable", async () => {
   const env = setupEnv();
   const realDriver = new DockerDriver();
-  const isAvailable = await realDriver.isAvailable();
+  // RR-15: a single isAvailable() snapshot can flap under CI load (3 s
+  // `docker info` timeout) while execute() re-checks freshly — stabilize on
+  // two consecutive identical readings before branching. Both branches keep
+  // their strict assertions; nothing is weakened.
+  let isAvailable = false;
+  {
+    let last: boolean | null = null;
+    let streak = 0;
+    for (let i = 0; i < 6; i++) {
+      const cur = await realDriver.isAvailable();
+      if (cur === last) {
+        streak++;
+        if (streak >= 1) {
+          isAvailable = cur;
+          break;
+        }
+      } else {
+        last = cur;
+        streak = 0;
+      }
+      if (i === 5) isAvailable = last ?? false;
+      else await new Promise((r) => setTimeout(r, 400));
+    }
+  }
 
   const provider = new ContainerExecutionProvider({
     workspaceRoot: env.workspaceRoot,

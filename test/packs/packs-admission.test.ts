@@ -5,7 +5,7 @@
 // malicious *content* is only ever fed to admission/registry paths.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PackManager, PackError } from "../../src/packs/packs.js";
@@ -79,9 +79,11 @@ test("RR-02: sidecar environment is isolated (no ambient secrets) and cwd is the
     const dump = JSON.parse(readFileSync(join(packDir, "probe-dump.json"), "utf8")) as { cwd: string; sentinelLeaked: boolean; pathPresent: boolean };
     assert.equal(dump.sentinelLeaked, false, "sidecar must not inherit ambient secrets");
     assert.equal(dump.pathPresent, true, "PATH must be available for tooling");
+    // RR-15: compare canonical paths — $TMPDIR may itself be a symlink
+    // (macOS /var -> /private/var), while process.cwd() is always resolved.
     assert.equal(
-      dump.cwd.toLowerCase(),
-      packDir.toLowerCase(),
+      realpathSync(dump.cwd).toLowerCase(),
+      realpathSync(packDir).toLowerCase(),
       `sidecar cwd must be its own pack directory, got ${dump.cwd}`,
     );
   } finally {

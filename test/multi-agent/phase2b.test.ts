@@ -214,7 +214,10 @@ test("P2B-002: Authority-to-jail compiler strictly blocks container daemon socke
 // 2B.3 Authority-to-Jail Equivalence: Host Filesystem Root
 // ============================================================================
 test("P2B-003: Authority-to-jail compiler strictly blocks host filesystem root mounts", () => {
-  const roots = ["/", "c:\\", "c:/", "\\"];
+  // RR-15: Windows drive-root literals ("c:\\") are ordinary relative
+  // filenames on POSIX, not roots — assert only what is actually a root on
+  // the running platform. The product behavior is unchanged and correct.
+  const roots = process.platform === "win32" ? ["/", "c:\\", "c:/", "\\"] : ["/"];
 
   for (const rootPath of roots) {
     assert.throws(
